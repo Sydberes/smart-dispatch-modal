@@ -1,0 +1,53 @@
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@import "./styles/foundations.css" layer(theme);
+@import "./styles/design-tokens.css" layer(theme);
+@import "./styles/responsive-tokens.css" layer(theme);
+@import "./styles/foundation-light.css" layer(theme);
+@import "./styles/foundation-dark.css" layer(theme);
+@import "./styles/theme-dark.css" layer(theme);
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    color-scheme: light dark;
+    font-family: Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-elevation-surface-primary);
+    color: var(--color-text-primary);
+  }
+}
+
+/* ── Core Intelligence animation keyframes used by the modal ── */
+
+/* LoadingText shimmer — the single AI animation on the dialog surface. */
+@keyframes ai-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* Tooltip / surface fade-in. */
+@keyframes ai-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Core Intelligence mark spin (thinking beat). */
+@keyframes ai-hex-spin {
+  0%, 6%   { transform: rotate(0deg); }
+  60%      { transform: rotate(355deg); }
+  72%      { transform: rotate(372deg); }
+  84%      { transform: rotate(357deg); }
+  100%     { transform: rotate(360deg); }
+}

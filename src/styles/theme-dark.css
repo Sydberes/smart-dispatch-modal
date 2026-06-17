@@ -1,0 +1,120 @@
+/* Dark mode for core-intelligence — extracted from foundation-dark.css commented block */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-elevation-surface-base-foundation: var(--color-darkneutral-0);
+  --color-elevation-surface-base-hover-foundation: var(--color-darkneutral-100);
+  --color-elevation-surface-base-pressed-foundation: var(--color-darkneutral-200);
+  --color-elevation-surface-primary-foundation: var(--color-darkneutral-100);
+  --color-elevation-surface-primary-hover-foundation: var(--color-darkneutral-300);
+  --color-elevation-surface-primary-pressed-foundation: var(--color-darkneutral-400);
+  --color-elevation-surface-sunken-foundation: var(--color-darkneutral-50);
+  --color-elevation-surface-raised-foundation: var(--color-darkneutral-200);
+  --color-elevation-surface-raised-hover-foundation: var(--color-darkneutral-300);
+  --color-elevation-surface-raised-pressed-foundation: var(--color-darkneutral-350);
+  --color-elevation-surface-overlay-foundation: var(--color-darkneutral-300);
+  --color-elevation-surface-overlay-hover-foundation: var(--color-darkneutral-350);
+  --color-elevation-surface-overlay-pressed-foundation: var(--color-darkneutral-400);
+
+  --color-text-primary-foundation: var(--color-darkneutral-1000);
+  --color-text-primary-inverse-foundation: var(--color-darkneutral-50);
+  --color-text-brand-button-foundation: var(--color-darkneutral-50);
+  --color-text-secondary-foundation: var(--color-darkneutral-900);
+  --color-text-tertiary-foundation: var(--color-darkneutral-800);
+  --color-text-brand-foundation: var(--color-teal-300);
+  --color-text-success-foundation: var(--color-green-300);
+  --color-text-warning-foundation: var(--color-yellow-300);
+  --color-text-warning-inverse-foundation: var(--color-darkneutral-50);
+  --color-text-danger-foundation: var(--color-red-300);
+  --color-text-information-foundation: var(--color-blue-300);
+  --color-text-disabled-foundation: var(--color-darkneutral-600);
+  --color-text-selected-foundation: var(--color-darkneutral-1000);
+
+  --color-icon-primary-foundation: var(--color-darkneutral-1000);
+  --color-icon-secondary-foundation: var(--color-darkneutral-900);
+  --color-icon-tertiary-foundation: var(--color-darkneutral-800);
+  --color-icon-inverse-foundation: var(--color-darkneutral-50);
+  --color-icon-brand-button-foundation: var(--color-neutral-1000);
+  --color-icon-brand-foundation: var(--color-teal-300);
+  --color-icon-success-foundation: var(--color-green-300);
+  --color-icon-warning-foundation: var(--color-yellow-300);
+  --color-icon-danger-foundation: var(--color-red-300);
+  --color-icon-information-foundation: var(--color-blue-300);
+  --color-icon-disabled-foundation: var(--color-darkneutral-600);
+  --color-icon-selected-foundation: var(--color-darkneutral-1000);
+  --color-icon-accent-hivis-foundation: var(--color-hivis-200);
+  --color-icon-accent-brickwork-foundation: var(--color-brickwork-400);
+  --color-icon-accent-craneberry-foundation: var(--color-craneberry-400);
+  --color-icon-accent-cement-foundation: var(--color-cement-300);
+
+  --color-background-disabled-foundation: var(--color-darkneutral-alpha-400a);
+  --color-background-input-foundation: var(--color-darkneutral-200);
+  --color-background-input-hover-foundation: var(--color-darkneutral-200);
+  --color-background-input-pressed-foundation: var(--color-darkneutral-100);
+  --color-background-selected-foundation: var(--color-darkneutral-alpha-200a);
+  --color-background-selected-hover-foundation: var(--color-darkneutral-alpha-300a);
+  --color-background-selected-pressed-foundation: var(--color-darkneutral-alpha-400a);
+  --color-background-selected-bold-foundation: var(--color-teal-500);
+  --color-background-selected-bold-hover-foundation: var(--color-teal-400);
+  --color-background-selected-bold-pressed-foundation: var(--color-teal-350);
+  --color-background-brand-primary-foundation: var(--color-teal-500);
+  --color-background-brand-primary-hover-foundation: var(--color-teal-400);
+  --color-background-brand-primary-pressed-foundation: var(--color-teal-350);
+  --color-background-brand-subtle-foundation: var(--color-teal-alpha-1000a);
+  --color-background-brand-subtle-hover-foundation: var(--color-teal-alpha-900a);
+  --color-background-brand-subtle-pressed-foundation: var(--color-teal-alpha-800a);
+  --color-background-neutral-primary-foundation: var(--color-darkneutral-alpha-200a);
+  --color-background-neutral-primary-hover-foundation: var(--color-darkneutral-alpha-300a);
+  --color-background-neutral-primary-pressed-foundation: var(--color-darkneutral-alpha-400a);
+  --color-background-neutral-secondary-foundation: var(--color-transparent);
+  --color-background-neutral-secondary-hover-foundation: var(--color-darkneutral-alpha-300a);
+  --color-background-neutral-secondary-pressed-foundation: var(--color-darkneutral-alpha-300a);
+  --color-background-neutral-bold-foundation: var(--color-darkneutral-900);
+  --color-background-neutral-bold-hover-foundation: var(--color-darkneutral-1000);
+  --color-background-neutral-bold-pressed-foundation: var(--color-darkneutral-1000);
+
+  --color-background-system-danger-foundation: var(--color-red-1000);
+  --color-background-system-danger-hover-foundation: var(--color-red-900);
+  --color-background-system-danger-pressed-foundation: var(--color-red-800);
+  --color-background-system-danger-bold-foundation: var(--color-red-500);
+  --color-background-system-warning-foundation: var(--color-yellow-900);
+  --color-background-system-warning-hover-foundation: var(--color-yellow-800);
+  --color-background-system-warning-bold-foundation: var(--color-yellow-500);
+  --color-background-system-success-foundation: var(--color-green-1000);
+  --color-background-system-success-hover-foundation: var(--color-green-900);
+  --color-background-system-success-bold-foundation: var(--color-green-500);
+  --color-background-system-information-foundation: var(--color-blue-1000);
+  --color-background-system-information-hover-foundation: var(--color-blue-900);
+  --color-background-system-information-bold-foundation: var(--color-blue-500);
+
+  --color-background-accent-hivis-subtle-foundation: var(--color-hivis-1000);
+  --color-background-accent-hivis-bold-foundation: var(--color-hivis-300);
+  --color-background-accent-brickwork-subtle-foundation: var(--color-brickwork-1000);
+  --color-background-accent-brickwork-bold-foundation: var(--color-brickwork-500);
+  --color-background-accent-craneberry-subtle-foundation: var(--color-craneberry-1000);
+  --color-background-accent-craneberry-bold-foundation: var(--color-craneberry-500);
+  --color-background-accent-cement-subtle-foundation: var(--color-cement-1000);
+  --color-background-accent-cement-bold-foundation: var(--color-cement-500);
+  --color-background-accent-grey-subtle-foundation: var(--color-darkneutral-500);
+
+  --color-border-primary-foundation: var(--color-darkneutral-alpha-400a);
+  --color-border-input-foundation: var(--color-darkneutral-400);
+  /* Curri never uses teal for focus; match the dark foundation mapping */
+  --color-border-focused-foundation: var(--color-darkneutral-700);
+  --color-border-disabled-foundation: var(--color-darkneutral-400);
+  --color-border-brand-foundation: var(--color-teal-300);
+  --color-border-success-foundation: var(--color-green-300);
+  --color-border-warning-foundation: var(--color-yellow-300);
+  --color-border-danger-foundation: var(--color-red-300);
+  --color-border-information-foundation: var(--color-blue-300);
+  --color-border-bold-foundation: var(--color-darkneutral-600);
+
+  --color-skeleton-primary-foundation: var(--color-darkneutral-alpha-200a);
+  --color-skeleton-secondary-foundation: var(--color-darkneutral-alpha-200a);
+  --color-blanket-blanket-foundation: var(--color-darkneutral-alpha-150a);
+
+  --shadow-elevation-overflow-foundation: 0px 0px 12px rgba(3, 4, 4, 0.56), 0px 0px 1px rgba(3, 4, 4, 0.5);
+  --shadow-elevation-raised-foundation: 0px 0px 0px rgba(0, 0, 0, 0), 0px 1px 1px rgba(3, 4, 4, 0.5), 0px 0px 1px rgba(3, 4, 4, 0.5);
+  --shadow-elevation-overlay-foundation: 0px 0px 0px rgba(57, 66, 74, 1), 0px 8px 12px rgba(3, 4, 4, 0.36), 0px 0px 1px rgba(3, 4, 4, 0.5);
+  --shadow-elevation-element-foundation: 0px 0.5px 1px 0px rgba(3, 4, 4, 0.31);
+}
