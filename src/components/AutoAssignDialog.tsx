@@ -10,6 +10,7 @@ import {
   LockSimpleOpen,
   Tag,
   Plus,
+  WarningCircle,
 } from '@phosphor-icons/react'
 import { CoreIntelligenceIcon } from './CoreIntelligenceIcon'
 import { Button } from './Button'
@@ -24,6 +25,15 @@ import {
 } from '../data/autoassign'
 
 const EASE_OUT = [0.25, 0.1, 0.25, 1] as const
+
+// Deterministic per-order flag: does this order's time window conflict with the
+// selected routes' schedules? Demo-only — stable across renders so the same
+// ~22% of orders surface in the conflicts check.
+function orderConflicts(id: string) {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  return h % 100 < 22
+}
 
 /** Core Intelligence Loading Text: shimmer is the single animation on this surface. */
 function LoadingText({ label }: { label: string }) {
@@ -110,7 +120,14 @@ export function AutoAssignDialog({
   }) => void
   onReopen: () => void
 }) {
-  const [step, setStep] = useState<1 | 2>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
+  // Conflicts gate: shown when leaving Orders if any selected order's window
+  // clashes with the selected routes. `forcedConflicts` are the ones the
+  // planner chooses to route anyway.
+  const [conflictOpen, setConflictOpen] = useState(false)
+  const [forcedConflicts, setForcedConflicts] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [phase, setPhase] = useState<'thinking' | 'ready' | 'optimizing'>(
     'thinking',
   )
@@ -145,7 +162,8 @@ export function AutoAssignDialog({
     return () => window.clearTimeout(id)
   }, [open])
 
-  // Optimization run: step through phases, then confirm and close.
+  // Optimization run: step through phases, then land on the Review step so the
+  // planner can audit the computed result before committing.
   const optPhases = [
     'Reading order windows',
     'Matching orders to routes',
@@ -158,30 +176,37 @@ export function AutoAssignDialog({
   useEffect(() => {
     if (phase !== 'optimizing') return
     if (optStep >= optPhases.length) {
-      onToast({
-        title: `${orderIds.size} ${orderIds.size === 1 ? 'order' : 'orders'} routed`,
-        description: `Assigned across ${routeIds.size} ${routeIds.size === 1 ? 'route' : 'routes'}.`,
-        action: {
-          label: 'Undo',
-          onClick: () =>
-            // Undo reverts quietly; resuming the flow is opt-in via the link
-            onToast({
-              title: 'Run reverted',
-              description: 'Orders are back in the queue, unassigned.',
-              action: {
-                label: 'Open Smart Dispatch',
-                onClick: onReopen,
-              },
-            }),
-        },
-      })
-      close()
+      setOptStep(0)
+      setPhase('ready')
+      setStep(3)
       return
     }
     const id = window.setTimeout(() => setOptStep((s) => s + 1), 1150)
     return () => window.clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, optStep])
+
+  // Commit the reviewed run: fire the result toast (with undo) and close.
+  const commit = () => {
+    onToast({
+      title: `${review.orderCount} ${review.orderCount === 1 ? 'order' : 'orders'} routed`,
+      description: `Assigned across ${review.routeCount} ${review.routeCount === 1 ? 'route' : 'routes'}.`,
+      action: {
+        label: 'Undo',
+        onClick: () =>
+          // Undo reverts quietly; resuming the flow is opt-in via the link
+          onToast({
+            title: 'Run reverted',
+            description: 'Orders are back in the queue, unassigned.',
+            action: {
+              label: 'Open Smart Dispatch',
+              onClick: onReopen,
+            },
+          }),
+      },
+    })
+    close()
+  }
 
   // ESC steps back: pane first, then the dialog.
   useEffect(() => {
@@ -198,7 +223,7 @@ export function AutoAssignDialog({
 
   // The pane belongs to step 1 only.
   useEffect(() => {
-    if (step === 2) setSelectedRouteId(null)
+    if (step !== 1) setSelectedRouteId(null)
   }, [step])
 
   const selectedRoute =
@@ -292,6 +317,85 @@ export function AutoAssignDialog({
     [filteredOrders],
   )
 
+  // Review step: a projected per-route impact summary for a final check before
+  // the run commits. The real optimizer decides placement; here we assign each
+  // in-scope order to an in-scope route in its branch (round-robin) so the
+  // per-route deltas and stop sequences read believably. Locked stops are
+  // counted only on routes still in scope.
+  const review = useMemo(() => {
+    const routes = ASSIGN_ROUTES.filter((r) => routeIds.has(r.id))
+    const orders = ASSIGN_ORDERS.filter((o) => orderIds.has(o.id))
+
+    const routesByBranch: Record<string, typeof routes> = {}
+    routes.forEach((r) => (routesByBranch[r.branch] ??= []).push(r))
+    const added = new Map(routes.map((r) => [r.id, [] as typeof orders]))
+    orders.forEach((o, i) => {
+      const pool = routesByBranch[o.branch]?.length
+        ? routesByBranch[o.branch]
+        : routes
+      if (!pool.length) return
+      added.get(pool[i % pool.length].id)!.push(o)
+    })
+
+    const lockedCount = [...lockedStops].filter((k) =>
+      routeIds.has(k.slice(0, k.indexOf(':'))),
+    ).length
+
+    const affected = routes
+      .map((r) => {
+        const adds = added.get(r.id) ?? []
+        return {
+          id: r.id,
+          name: r.routeName,
+          colorBar: r.colorBar,
+          addedCount: adds.length,
+          beforeStops: r.stops.length,
+          afterStops: r.stops.length + adds.length,
+        }
+      })
+      .filter((r) => r.addedCount > 0)
+      .sort((a, b) => b.addedCount - a.addedCount)
+
+    return {
+      orderCount: orders.length,
+      routeCount: affected.length,
+      lockedCount,
+      affected,
+    }
+  }, [routeIds, orderIds, lockedStops])
+
+  // Selected orders whose window conflicts with the routes' schedules.
+  const conflictingOrders = useMemo(
+    () =>
+      ASSIGN_ORDERS.filter(
+        (o) => orderIds.has(o.id) && orderConflicts(o.id),
+      ),
+    [orderIds],
+  )
+
+  // Leaving Orders: gate on conflicts, else run the optimizer.
+  const startOptimizing = () => {
+    if (conflictingOrders.length > 0) {
+      setForcedConflicts(new Set(conflictingOrders.map((o) => o.id)))
+      setConflictOpen(true)
+    } else {
+      setPhase('optimizing')
+    }
+  }
+
+  // Proceed: drop the conflicting orders left unchecked, then optimize.
+  const proceedConflicts = () => {
+    setOrderIds((prev) => {
+      const next = new Set(prev)
+      conflictingOrders.forEach((o) => {
+        if (!forcedConflicts.has(o.id)) next.delete(o.id)
+      })
+      return next
+    })
+    setConflictOpen(false)
+    setPhase('optimizing')
+  }
+
   const toggle = (
     set: React.Dispatch<React.SetStateAction<Set<string>>>,
     id: string,
@@ -324,6 +428,7 @@ export function AutoAssignDialog({
     setExpanded(new Set())
     setShowExcluded(false)
     setSelectedRouteId(null)
+    setConflictOpen(false)
   }
 
   const visible = step === 1 ? filteredRoutes : filteredOrders
@@ -429,7 +534,7 @@ export function AutoAssignDialog({
                       <BreadcrumbNode
                         label="Routes"
                         state={step === 1 ? 'current' : 'done'}
-                        onClick={() => step === 2 && setStep(1)}
+                        onClick={() => step > 1 && setStep(1)}
                       />
                       <CaretRight
                         size={12}
@@ -437,7 +542,18 @@ export function AutoAssignDialog({
                       />
                       <BreadcrumbNode
                         label="Orders"
-                        state={step === 2 ? 'current' : 'upcoming'}
+                        state={
+                          step === 2 ? 'current' : step > 2 ? 'done' : 'upcoming'
+                        }
+                        onClick={() => step > 2 && setStep(2)}
+                      />
+                      <CaretRight
+                        size={12}
+                        style={{ color: 'var(--color-icon-tertiary)' }}
+                      />
+                      <BreadcrumbNode
+                        label="Review"
+                        state={step === 3 ? 'current' : 'upcoming'}
                       />
                     </nav>
                   </div>
@@ -467,6 +583,10 @@ export function AutoAssignDialog({
                   </div>
                 </div>
 
+                {step === 3 ? (
+                  <ReviewStep {...review} />
+                ) : (
+                  <>
                 {/* Search: standalone, the primary instrument.
                     Matches curri TextInput (large): border-input, p-xs,
                     12px text, focus-within pressed bg + focused border */}
@@ -706,6 +826,8 @@ export function AutoAssignDialog({
                     )}
                   </AnimatePresence>
                 </div>
+                  </>
+                )}
 
                 {/* Footer */}
                 <div className="px-4 py-3 flex items-center justify-between shrink-0">
@@ -725,7 +847,7 @@ export function AutoAssignDialog({
                           Confirm routes
                         </Button>
                       </>
-                    ) : (
+                    ) : step === 2 ? (
                       <>
                         <Button
                           variant="secondary"
@@ -735,14 +857,32 @@ export function AutoAssignDialog({
                           Back
                         </Button>
                         <Button
+                          variant="primary"
+                          size="large"
+                          disabled={orderIds.size === 0}
+                          onClick={startOptimizing}
+                        >
+                          Optimize
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="secondary"
+                          size="large"
+                          onClick={() => setStep(2)}
+                        >
+                          Back
+                        </Button>
+                        <Button
                           variant="brand"
                           size="large"
                           className="gap-1.5"
-                          disabled={orderIds.size === 0}
-                          onClick={() => setPhase('optimizing')}
+                          disabled={review.orderCount === 0}
+                          onClick={commit}
                         >
-                          Route {orderIds.size}{' '}
-                          {orderIds.size === 1 ? 'order' : 'orders'}
+                          Route {review.orderCount}{' '}
+                          {review.orderCount === 1 ? 'order' : 'orders'}
                         </Button>
                       </>
                     )}
@@ -753,7 +893,236 @@ export function AutoAssignDialog({
           </motion.div>
         </div>
       )}
+
+      {open && conflictOpen && (
+        <ConflictDialog
+          conflicts={conflictingOrders}
+          forced={forcedConflicts}
+          onToggle={(id) =>
+            setForcedConflicts((prev) => {
+              const next = new Set(prev)
+              next.has(id) ? next.delete(id) : next.add(id)
+              return next
+            })
+          }
+          onCancel={() => setConflictOpen(false)}
+          onProceed={proceedConflicts}
+        />
+      )}
     </AnimatePresence>
+  )
+}
+
+/**
+ * Conflicts gate — Curri Dialog shell (UI Library 1515-10832) with a danger
+ * AlertBanner and a table of the conflicting orders. The planner unchecks any
+ * they don't want to force through, then proceeds to the optimization run.
+ */
+function ConflictDialog({
+  conflicts,
+  forced,
+  onToggle,
+  onCancel,
+  onProceed,
+}: {
+  conflicts: AssignOrder[]
+  forced: Set<string>
+  onToggle: (id: string) => void
+  onCancel: () => void
+  onProceed: () => void
+}) {
+  const forcedCount = conflicts.filter((o) => forced.has(o.id)).length
+  const cols = '36px 1.1fr 1.3fr 1.3fr 0.9fr'
+  return (
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center">
+      <motion.div
+        className="absolute inset-0"
+        style={{ background: 'rgba(0,0,0,0.5)' }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.15, ease: EASE_OUT }}
+        onClick={onCancel}
+      />
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        className="relative flex flex-col rounded-[8px] overflow-hidden"
+        style={{
+          width: 600,
+          maxHeight: '80vh',
+          background: 'var(--color-elevation-surface-overlay)',
+          border: '0.5px solid var(--color-border-primary)',
+          boxShadow: 'var(--shadow-elevation-overlay)',
+        }}
+        initial={{ opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.97 }}
+        transition={{ duration: 0.18, ease: EASE_OUT }}
+      >
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 flex items-start justify-between shrink-0">
+          <h2
+            className="text-[16px] m-0"
+            style={{
+              color: 'var(--color-text-primary)',
+              fontWeight: 600,
+              letterSpacing: '-0.01em',
+            }}
+          >
+            Conflicts detected
+          </h2>
+          <button
+            onClick={onCancel}
+            className="h-6 w-6 inline-flex items-center justify-center rounded-xs shrink-0"
+            style={{
+              background: 'var(--color-background-neutral-secondary)',
+              color: 'var(--color-text-secondary)',
+            }}
+          >
+            <X size={12} />
+          </button>
+        </div>
+
+        {/* Danger AlertBanner */}
+        <div
+          className="mx-5 mb-4 rounded-xs p-3 flex items-start gap-2.5 shrink-0"
+          style={{
+            background: 'var(--color-background-system-danger)',
+            border: '0.5px solid var(--color-border-danger)',
+          }}
+        >
+          <WarningCircle
+            size={16}
+            weight="fill"
+            style={{ color: 'var(--color-icon-danger)', flexShrink: 0, marginTop: 1 }}
+          />
+          <div className="min-w-0">
+            <div
+              className="text-[13px]"
+              style={{
+                color: 'var(--color-text-primary)',
+                fontWeight: 500,
+                lineHeight: '18px',
+              }}
+            >
+              {conflicts.length}{' '}
+              {conflicts.length === 1 ? 'order has' : 'orders have'} time
+              conflicts
+            </div>
+            <p
+              className="text-[12px] m-0 text-pretty"
+              style={{
+                color: 'var(--color-text-secondary)',
+                lineHeight: '17px',
+                marginTop: 2,
+              }}
+            >
+              These orders have time windows that don't align with the selected
+              routes' schedules. Force through the ones you still want to route.
+            </p>
+          </div>
+        </div>
+
+        {/* Conflict table */}
+        <div
+          className="mx-5 mb-4 rounded-xs overflow-hidden flex flex-col min-h-0"
+          style={{ border: '0.5px solid var(--color-border-primary)' }}
+        >
+          <div
+            className="grid items-center px-3 h-7 shrink-0"
+            style={{
+              gridTemplateColumns: cols,
+              gap: 8,
+              borderBottom: '0.5px solid var(--color-border-primary)',
+              background: 'var(--color-elevation-surface-overlay-hover)',
+            }}
+          >
+            <span />
+            {['Order', 'Pickup', 'Drop-off', 'Window'].map((h) => (
+              <span
+                key={h}
+                className="text-[10px]"
+                style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}
+              >
+                {h}
+              </span>
+            ))}
+          </div>
+          <div className="overflow-auto min-h-0">
+            {conflicts.map((o) => {
+              const on = forced.has(o.id)
+              return (
+                <button
+                  key={o.id}
+                  onClick={() => onToggle(o.id)}
+                  className="grid items-center px-3 w-full text-left transition-colors duration-150 hover:bg-elevation-surface-overlay-hover"
+                  style={{
+                    gridTemplateColumns: cols,
+                    gap: 8,
+                    height: 40,
+                    borderBottom: '0.5px solid var(--color-border-primary)',
+                    opacity: on ? 1 : 0.5,
+                  }}
+                >
+                  <CheckBox checked={on} />
+                  <span
+                    className="text-[12px] tabular-nums truncate"
+                    style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}
+                  >
+                    {o.orderNum}
+                  </span>
+                  <span
+                    className="text-[12px] truncate"
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    {o.pickupCompany}
+                  </span>
+                  <span
+                    className="text-[12px] truncate"
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    {o.dropoffCompany}
+                  </span>
+                  <span
+                    className="text-[12px] tabular-nums truncate"
+                    style={{ color: 'var(--color-text-tertiary)' }}
+                  >
+                    {o.window}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          className="px-5 py-4 flex items-center justify-end gap-2 shrink-0"
+          style={{ borderTop: '0.5px solid var(--color-border-primary)' }}
+        >
+          <Button variant="secondary" size="large" onClick={onCancel}>
+            Cancel
+          </Button>
+          <button
+            onClick={onProceed}
+            className="inline-flex items-center justify-center h-8 px-3 rounded-xs text-[12px] transition-[filter] duration-150"
+            style={{
+              background: 'var(--color-background-system-danger-bold)',
+              color: '#fff',
+              fontWeight: 500,
+              border: '0.5px solid transparent',
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.filter = 'brightness(0.94)')
+            }
+            onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+          >
+            Proceed with {forcedCount} {forcedCount === 1 ? 'order' : 'orders'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
   )
 }
 
@@ -762,6 +1131,161 @@ export function AutoAssignDialog({
  * a 2px gap underline. Current = primary + underline, done = secondary and
  * clickable, upcoming = disabled.
  */
+type AffectedRoute = {
+  id: string
+  name: string
+  colorBar: string
+  addedCount: number
+  beforeStops: number
+  afterStops: number
+}
+
+/** Light post-optimization confirmation: a headline, the totals, and a
+ *  one-line-per-route glance. No stop-level drill-down. */
+function ReviewStep({
+  orderCount,
+  routeCount,
+  lockedCount,
+  affected,
+}: {
+  orderCount: number
+  routeCount: number
+  lockedCount: number
+  affected: AffectedRoute[]
+}) {
+  return (
+    <motion.div
+      key="review"
+      className="px-4 flex-1 min-h-0"
+      initial={{ opacity: 0, x: 10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.22, ease: EASE_OUT }}
+    >
+      <div
+        className="h-full rounded-[8px] overflow-auto"
+        style={{
+          border: '0.5px solid var(--color-border-primary)',
+          background: 'var(--color-elevation-surface-overlay)',
+        }}
+      >
+        {/* Conversational summary — the single AI voice on this surface */}
+        <div
+          className="px-4 py-3.5"
+          style={{ borderBottom: '0.5px solid var(--color-border-primary)' }}
+        >
+          <p
+            className="text-[13px] leading-[19px] text-pretty m-0"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            <span
+              style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}
+            >
+              Optimized {orderCount} {orderCount === 1 ? 'order' : 'orders'} across{' '}
+              {routeCount} {routeCount === 1 ? 'route' : 'routes'}.
+            </span>{' '}
+            {lockedCount > 0
+              ? `I kept ${lockedCount} ${lockedCount === 1 ? 'stop' : 'stops'} pinned and sequenced the rest by drive time.`
+              : `I sequenced every stop by drive time.`}
+          </p>
+        </div>
+
+        {/* Scope tiles */}
+        <div
+          className="px-4 py-3 grid grid-cols-3 gap-2"
+          style={{ borderBottom: '0.5px solid var(--color-border-primary)' }}
+        >
+          <ReviewStat label="Orders" value={orderCount} />
+          <ReviewStat label="Routes" value={routeCount} />
+          <ReviewStat label="Locked stops" value={lockedCount} />
+        </div>
+
+        {/* Affected routes — one glanceable line each, no drill-down */}
+        <div className="px-4 pt-3 pb-1.5">
+          <span
+            className="text-[11px]"
+            style={{ color: 'var(--color-text-tertiary)' }}
+          >
+            Affected routes
+          </span>
+        </div>
+        <div>
+          {affected.map((r, i) => (
+            <div
+              key={r.id}
+              className="px-4 flex items-center gap-2.5"
+              style={{
+                height: 36,
+                borderTop:
+                  i === 0 ? 'none' : '0.5px solid var(--color-border-primary)',
+              }}
+            >
+              <span
+                className="shrink-0 rounded-full"
+                style={{ width: 8, height: 8, background: `var(${r.colorBar})` }}
+              />
+              <span
+                className="flex-1 min-w-0 text-[12px] truncate"
+                style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}
+              >
+                {r.name}
+              </span>
+              <span
+                className="text-[11px] tabular-nums shrink-0"
+                style={{ color: 'var(--color-text-tertiary)' }}
+              >
+                {r.beforeStops} → {r.afterStops} stops
+              </span>
+              <span
+                className="shrink-0 inline-flex items-center tabular-nums"
+                style={{
+                  height: 18,
+                  padding: '0 7px',
+                  borderRadius: 9,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  background: 'var(--color-background-system-success)',
+                  color: 'var(--color-text-success)',
+                }}
+              >
+                +{r.addedCount}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+function ReviewStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div
+      className="rounded-xs px-3 py-2.5 flex flex-col gap-0.5"
+      style={{
+        background: 'var(--color-elevation-surface-raised)',
+        border: '0.5px solid var(--color-border-primary)',
+      }}
+    >
+      <span
+        className="text-[18px] tabular-nums"
+        style={{
+          color: 'var(--color-text-primary)',
+          fontWeight: 600,
+          lineHeight: '22px',
+        }}
+      >
+        {value}
+      </span>
+      <span
+        className="text-[11px]"
+        style={{ color: 'var(--color-text-tertiary)' }}
+      >
+        {label}
+      </span>
+    </div>
+  )
+}
+
 function BreadcrumbNode({
   label,
   state,

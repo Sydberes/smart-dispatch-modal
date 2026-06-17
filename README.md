@@ -51,7 +51,8 @@ to the app's real Toaster and `onReopen` re-triggers the open state.
 
 ## States
 
-The dialog is a two-step flow with an AI run at the end:
+A three-step wizard (Routes → Orders → Review) with a conflicts gate and an
+optimization run in between:
 
 1. **Step 1 — Routes.** Select which routes are in scope. Opens on an AI
    "thinking" beat (shimmering Core Intelligence mark) that settles into the
@@ -60,12 +61,23 @@ The dialog is a two-step flow with an AI run at the end:
    stops in place (the optimizer won't reorder a locked stop) and edit the
    route's required skills.
 3. **Step 2 — Orders.** Select which orders to route, grouped by branch, with
-   search and an excluded-review mode.
-4. **Optimizing run.** Commit steps through the optimization phases (reading
-   windows → matching → keeping locked stops → checking drive times), then fires
-   a success toast with an **Undo** action and closes.
+   search and an excluded-review mode. The primary action is **Optimize**.
+4. **Conflicts gate.** If any selected order's time window clashes with the
+   chosen routes, a danger dialog lists the conflicting orders. The planner
+   unchecks any they don't want to force through, then **Proceeds**. No
+   conflicts → it optimizes straight through.
+5. **Optimizing run.** Steps through the phases (reading windows → matching →
+   keeping locked stops → checking drive times), then lands on Review.
+6. **Step 3 — Review.** A light post-optimization confirmation: a one-line
+   summary, totals tiles (orders / routes / locked stops), and a glanceable
+   one-line-per-route impact list (`before → after stops`, `+N`). **Route N
+   orders** commits and fires a success toast with **Undo**.
 
 `ESC` steps back: it closes the detail pane first, then the dialog.
+
+> Demo-only logic: conflicting orders are a stable ~22% subset, and per-route
+> impact is a projected assignment (orders matched to a route in their branch).
+> The real optimizer decides placement.
 
 ## Notes for implementation
 
